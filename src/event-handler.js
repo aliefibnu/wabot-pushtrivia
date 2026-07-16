@@ -34,7 +34,7 @@ export function setupEventHandlers(sock, options = {}) {
 
     // Event pesan masuk
     if (events["messages.upsert"]) {
-      await handleIncomingMessages(events["messages.upsert"], sock);
+      await handleIncomingMessages(events["messages.upsert"]);
     }
 
     // Event update pesan
@@ -59,9 +59,9 @@ async function handleConnectionUpdate(update, sock, restartConnection) {
     const statusCode = lastDisconnect?.error?.output?.statusCode;
 
     if (statusCode !== DisconnectReason.loggedOut) {
-      console.log("\n⚠️  Koneksi terputus. Mencoba menghubungkan kembali...\n");
+      console.log("\n⚠️  Koneksi terputus. Mencoba menghubungkan kembali...");
       logger.warn("Koneksi terputus, mencoba reconnect...");
-      restartConnection();
+      setTimeout(() => restartConnection(), 3000); // Delay 3 detik sebelum reconnect
     } else {
       console.log("\n❌ Anda telah LOGOUT!");
       console.log(
@@ -74,16 +74,24 @@ async function handleConnectionUpdate(update, sock, restartConnection) {
   }
 
   if (connection === "open") {
-    console.log("\n✅ Berhasil terhubung ke WhatsApp!");
-    console.log(`📱 Nomor: ${sock.user?.id?.split(":")[0] || "Unknown"}`);
-    console.log(`🟢 Status: Online\n`);
+    console.log("\n" + "═".repeat(60));
+    console.log("  ✅ Berhasil terhubung ke WhatsApp!");
+    console.log("─".repeat(60));
+    console.log(`  📱 Nomor   : ${sock.user?.id?.split(":")[0] || "Unknown"}`);
+    console.log(`  🟢 Status  : Online`);
+    console.log(
+      `  📋 Mode    : ${FLAGS.logAllMessages ? "Log semua pesan" : "Log pesan masuk"}`,
+    );
+    console.log("═".repeat(60) + "\n");
     logger.info("WhatsApp terhubung");
   }
 
   if (qr) {
     if (FLAGS.usePairingCode && !sock.authState.creds.registered) {
-      console.log("\n🔑 MODE PAIRING CODE");
-      console.log("─────────────────────────────");
+      console.log("\n" + "═".repeat(60));
+      console.log("  🔑 MODE PAIRING CODE");
+      console.log("─".repeat(60));
+
       const readline = (await import("node:readline")).default;
       const rl = readline.createInterface({
         input: process.stdin,
@@ -93,19 +101,24 @@ async function handleConnectionUpdate(update, sock, restartConnection) {
         new Promise((resolve) => rl.question(text, resolve));
 
       const phoneNumber = await question(
-        "📱 Masukkan nomor (contoh: 628xxx): ",
+        "  📱 Masukkan nomor (contoh: 628xxx): ",
       );
       const code = await sock.requestPairingCode(phoneNumber);
 
-      console.log(`\n🔢 Kode pairing: ${code}`);
-      console.log("Buka WhatsApp > Perangkat Tertaut > Tautkan Perangkat");
-      console.log("Masukkan kode di atas\n");
+      console.log("─".repeat(60));
+      console.log(`  🔢 Kode pairing: ${code}`);
+      console.log("─".repeat(60));
+      console.log("  Buka WhatsApp > Perangkat Tertaut > Tautkan Perangkat");
+      console.log("  Masukkan kode di atas");
+      console.log("═".repeat(60) + "\n");
       rl.close();
     } else if (!FLAGS.usePairingCode) {
-      console.log("\n📷 MODE QR CODE");
-      console.log("─────────────────────────────");
-      console.log("Silakan scan QR code yang muncul");
-      console.log("WhatsApp > Perangkat Tertaut > Tautkan Perangkat\n");
+      console.log("\n" + "═".repeat(60));
+      console.log("  📷 MODE QR CODE");
+      console.log("─".repeat(60));
+      console.log("  Silakan scan QR code yang muncul");
+      console.log("  WhatsApp > Perangkat Tertaut > Tautkan Perangkat");
+      console.log("═".repeat(60) + "\n");
     }
   }
 

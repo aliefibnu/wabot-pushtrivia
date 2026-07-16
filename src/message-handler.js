@@ -1,5 +1,5 @@
-// message-handler.js - Handler untuk pesan masuk dan keluar
-import { generateMessageIDV2, isJidNewsletter } from "baileys";
+// message-handler.js - Handler untuk pesan masuk
+import { isJidNewsletter } from "baileys";
 import { logger } from "./logger.js";
 import { FLAGS } from "./config.js";
 
@@ -32,6 +32,7 @@ function extractMessageText(message) {
     message.imageMessage?.caption ||
     message.videoMessage?.caption ||
     message.documentMessage?.caption ||
+    message.audioMessage?.caption ||
     "[Pesan non-teks]"
   );
 }
@@ -42,85 +43,133 @@ function extractMessageText(message) {
 function getMessageType(message) {
   if (!message) return "unknown";
 
-  if (message.conversation) return "teks";
-  if (message.extendedTextMessage) return "teks_panjang";
-  if (message.imageMessage) return "gambar";
-  if (message.videoMessage) return "video";
-  if (message.audioMessage) return "audio";
-  if (message.documentMessage) return "dokumen";
-  if (message.stickerMessage) return "stiker";
-  if (message.locationMessage) return "lokasi";
-  if (message.contactMessage) return "kontak";
-  return "lainnya";
+  if (message.conversation) return "📝 Teks";
+  if (message.extendedTextMessage) return "📝 Teks Panjang";
+  if (message.imageMessage) return "🖼️ Gambar";
+  if (message.videoMessage) return "🎥 Video";
+  if (message.audioMessage) return "🎵 Audio";
+  if (message.documentMessage) return "📄 Dokumen";
+  if (message.stickerMessage) return "🏷️ Stiker";
+  if (message.locationMessage) return "📍 Lokasi";
+  if (message.contactMessage) return "👤 Kontak";
+  if (message.reactionMessage) return "💬 Reaksi";
+  if (message.ephemeralMessage) return "⏳ Pesan Sementara";
+  return "📦 Lainnya";
 }
 
 /**
- * Menampilkan informasi pesan
+ * Mendapatkan ID pengirim yang bersih
  */
-function displayMessageInfo(msg, sock) {
+function getCleanJid(jid) {
+  if (!jid) return "Unknown";
+  // Hapus domain untuk tampilan yang lebih bersih
+  return jid.split("@")[0];
+}
+
+/**
+ * Menampilkan informasi pesan di console
+ */
+function displayMessageInfo(msg) {
   const isFromMe = msg.key.fromMe;
-  const direction = isFromMe ? "📤 KELUAR" : "📥 MASUK";
-  const sender = isFromMe ? "Saya" : msg.key.remoteJid || "Unknown";
+  const direction = isFromMe ? "📤 PESAN KELUAR" : "📥 PESAN MASUK";
+  const sender = isFromMe
+    ? "Saya"
+    : getCleanJid(msg.key.remoteJid) || "Unknown";
+  const receiver = isFromMe ? getCleanJid(msg.key.remoteJid) : "Saya";
   const messageType = getMessageType(msg.message);
   const text = extractMessageText(msg.message);
   const timestamp = formatTimestamp(msg.messageTimestamp);
 
-  console.log("\n" + "═".repeat(50));
-  console.log(`${direction} | ${timestamp}`);
-  console.log("─".repeat(50));
-  console.log(`Dari    : ${sender}`);
-  console.log(`Ke      : ${isFromMe ? msg.key.remoteJid : "Saya"}`);
-  console.log(`Tipe    : ${messageType}`);
-  console.log(`ID      : ${msg.key.id}`);
+  console.log("\n" + "═".repeat(60));
+  console.log(`  ${direction}`);
+  console.log("─".repeat(60));
+  console.log(`  🕐 Waktu  : ${timestamp}`);
+  console.log(`  👤 Dari   : ${sender}`);
+  console.log(`  👤 Ke     : ${receiver}`);
+  console.log(`  📋 Tipe   : ${messageType}`);
+  console.log(`  🆔 ID     : ${msg.key.id}`);
 
   if (text) {
-    console.log(`Pesan   : ${text}`);
+    // Potong teks jika terlalu panjang
+    const displayText =
+      text.length > 100 ? text.substring(0, 100) + "..." : text;
+    console.log(`  💬 Pesan  : ${displayText}`);
   }
 
   // Info tambahan jika ada
   if (msg.pushName && !isFromMe) {
-    console.log(`Nama    : ${msg.pushName}`);
+    console.log(`  📛 Nama   : ${msg.pushName}`);
   }
 
+  // Cek apakah ini pesan yang membalas pesan lain
   if (msg.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
     const quotedText = extractMessageText(
       msg.message.extendedTextMessage.contextInfo.quotedMessage,
     );
     if (quotedText) {
-      console.log(`Balasan : "${quotedText}"`);
+      const displayQuoted =
+        quotedText.length > 50
+          ? quotedText.substring(0, 50) + "..."
+          : quotedText;
+      console.log(`  ↩️  Balasan: "${displayQuoted}"`);
     }
   }
 
-  console.log("═".repeat(50) + "\n");
+  // Info tambahan untuk pesan media
+  if (msg.message?.imageMessage) {
+    console.log(
+      `  📏 Ukuran : ${(msg.message.imageMessage.fileLength / 1024).toFixed(2)} KB`,
+    );
+    if (msg.message.imageMessage.mimetype) {
+      console.log(`  📐 Format : ${msg.message.imageMessage.mimetype}`);
+    }
+  }
+
+  if (msg.message?.videoMessage) {
+    console.log(
+      `  📏 Ukuran : ${(msg.message.videoMessage.fileLength / 1024).toFixed(2)} KB`,
+    );
+    console.log(`  ⏱️ Durasi : ${msg.message.videoMessage.seconds || 0} detik`);
+  }
+
+  if (msg.message?.audioMessage) {
+    console.log(`  ⏱️ Durasi : ${msg.message.audioMessage.seconds || 0} detik`);
+  }
+
+  if (msg.message?.documentMessage) {
+    console.log(
+      `  📄 Nama   : ${msg.message.documentMessage.fileName || "Tidak ada nama"}`,
+    );
+    console.log(
+      `  📏 Ukuran : ${(msg.message.documentMessage.fileLength / 1024).toFixed(2)} KB`,
+    );
+  }
+
+  console.log("═".repeat(60));
 }
 
 /**
  * Menangani pesan masuk
  */
-export async function handleIncomingMessages(upsert, sock) {
+export async function handleIncomingMessages(upsert) {
   logger.debug(upsert, "Pesan masuk (debug)");
 
   if (upsert.type === "notify") {
     for (const msg of upsert.messages) {
-      // Tampilkan SEMUA pesan (baik dari saya maupun orang lain)
-      if (FLAGS.logAllMessages) {
-        displayMessageInfo(msg, sock);
-      } else {
-        // Default: hanya tampilkan pesan dari orang lain
-        if (!msg.key.fromMe && !isJidNewsletter(msg.key.remoteJid)) {
-          displayMessageInfo(msg, sock);
-        }
+      // Skip pesan dari newsletter
+      if (isJidNewsletter(msg.key.remoteJid)) {
+        continue;
       }
 
-      // Auto-reply logic
-      if (
-        FLAGS.doReplies &&
-        !msg.key.fromMe &&
-        !isJidNewsletter(msg.key.remoteJid)
-      ) {
-        const text = extractMessageText(msg.message);
-        if (text) {
-          await sendAutoReply(msg, text, sock);
+      // console.log(msg);
+
+      // Tampilkan semua pesan (masuk & keluar)
+      if (FLAGS.logAllMessages) {
+        displayMessageInfo(msg);
+      } else {
+        // Default: hanya tampilkan pesan dari orang lain
+        if (!msg.key.fromMe) {
+          displayMessageInfo(msg);
         }
       }
     }
@@ -128,50 +177,25 @@ export async function handleIncomingMessages(upsert, sock) {
 }
 
 /**
- * Mengirim balasan otomatis
- */
-export async function sendAutoReply(msg, incomingText, sock) {
-  if (!sock?.user?.id) {
-    logger.warn("User ID tidak tersedia, tidak bisa mengirim balasan");
-    return;
-  }
-
-  const messageId = generateMessageIDV2(sock.user.id);
-  const replyText =
-    `🤖 Halo! Saya bot otomatis.\n\n` +
-    `📝 Pesan Anda: "${incomingText}"\n\n` +
-    `⏰ Saat ini saya hanya bisa membalas secara otomatis. Maaf ya! 😊`;
-
-  try {
-    await sock.sendMessage(
-      msg.key.remoteJid,
-      { text: replyText },
-      { messageId },
-    );
-
-    console.log(`✅ Balasan terkirim ke ${msg.key.remoteJid}`);
-    logger.info({ to: msg.key.remoteJid }, "Balasan otomatis terkirim");
-  } catch (error) {
-    console.error(`❌ Gagal mengirim balasan: ${error.message}`);
-    logger.error({ error }, "Gagal mengirim balasan otomatis");
-  }
-}
-
-/**
- * Menangani update pesan
+ * Menangani update pesan (pesan diedit, dihapus, dll)
  */
 export function handleMessageUpdate(updates) {
   logger.debug(updates, "Pesan diupdate");
 
-  if (FLAGS.logAllMessages) {
-    console.log("📝 Update pesan diterima:");
-    for (const { update } of updates) {
-      if (update.message) {
-        console.log(`  - Pesan diedit: ${extractMessageText(update.message)}`);
-      }
-      if (update.status) {
-        console.log(`  - Status berubah menjadi: ${update.status}`);
-      }
+  for (const { update } of updates) {
+    if (update.message) {
+      const editedText = extractMessageText(update.message);
+      console.log(`\n📝 Pesan diedit menjadi: "${editedText}"`);
+    }
+    if (update.status) {
+      const statusMap = {
+        read: "📖 Dibaca",
+        delivered: "✓ Terkirim",
+        played: "▶️ Diputar",
+      };
+      console.log(
+        `\n📊 Status pesan: ${statusMap[update.status] || update.status}`,
+      );
     }
   }
 }
@@ -190,7 +214,7 @@ export function handleMessageReceipt(receipts) {
         played: "▶️ Diputar",
       };
       const status = statusMap[receipt.status] || receipt.status;
-      console.log(`📊 Status pesan ${receipt.id}: ${status}`);
+      console.log(`📊 Status pesan: ${status} (ID: ${receipt.id})`);
     }
   }
 }

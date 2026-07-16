@@ -2,7 +2,6 @@
 export const LOG_LEVEL = "warn";
 
 export const FLAGS = {
-  doReplies: process.argv.includes("--do-reply"),
   usePairingCode: process.argv.includes("--use-pairing-code"),
   logAllMessages: process.argv.includes("--log-all"),
 };
